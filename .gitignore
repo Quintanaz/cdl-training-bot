@@ -11,3 +11,12 @@ __pycache__/
 .DS_Store
 *.log
 botzip.zip
+
+# Runtime state and history
+official_watch_state.json
+competitive_settings_state/
+
+# Local backups
+*.backup
+*.before_*
+*.pre_playwright

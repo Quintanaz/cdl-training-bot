@@ -13,6 +13,7 @@ from catalog import CATEGORIES, FORUMS, FORUM_TAGS, TOPICS, classify, clean_url
 import sources
 from sources import discover
 from official_watch import OfficialWatch
+from competitive_settings_watch import CompetitiveSettingsWatch
 from pool_monitor import CandidateStore, extract_candidates, is_official
 from storage import Store
 
@@ -28,6 +29,7 @@ intents=discord.Intents.default()
 bot=commands.Bot(command_prefix='!',intents=intents,allowed_mentions=discord.AllowedMentions.none())
 started=False
 OFFICIAL_WATCH=OfficialWatch(ROOT/'official_watch_state.json')
+COMPETITIVE_WATCH=CompetitiveSettingsWatch(ROOT/'competitive_settings_state')
 POOL_CANDIDATES=CandidateStore(ROOT/'pool_candidates.json')
 KNOWN_MAPS=[x.strip() for x in os.getenv('CDL_CANDIDATE_MAPS','').split(',') if x.strip()]
 
@@ -108,6 +110,7 @@ async def on_ready():
     await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
     print(f'Logged in as {bot.user}; guild {GUILD_ID}; slash commands synced.')
     if os.getenv('DISCOVERY_ENABLED','false').lower()=='true': discovery_loop.start()
+    if os.getenv('COMPETITIVE_WATCH_ENABLED','true').lower()=='true': competitive_watch_loop.start()
     if os.getenv('OFFICIAL_WATCH_ENABLED','true').lower()=='true': official_watch_loop.start()
 
 @bot.tree.command(name='setup',description='Preview or safely add the study structure',guild=discord.Object(id=GUILD_ID))
@@ -300,6 +303,64 @@ async def official_watch_loop():
         changes=await OFFICIAL_WATCH.check()
         await send_official_changes(guild,changes)
         await check_pool_candidates(guild)
+
+
+@tasks.loop(hours=6)
+async def competitive_watch_loop():
+    guild = bot.get_guild(GUILD_ID)
+
+    if not guild:
+        return
+
+    try:
+        result = await COMPETITIVE_WATCH.check()
+    except Exception as error:
+        print("Competitive settings watch failed:", repr(error))
+        return
+
+    if result["status"] != "changed":
+        print("Competitive settings:", result["status"])
+        return
+
+    dest = channel(guild, "cdl-rules-and-map-pool")
+
+    if not isinstance(dest, discord.TextChannel):
+        return
+
+    diff = result["changes"]
+
+    # Keep Discord messages below the 2000-character limit.
+    changes = [
+        line for line in diff
+        if line.startswith(("+", "-"))
+        and not line.startswith(("+++", "---"))
+    ]
+
+    summary = "\\n".join(changes)
+
+    if len(summary) > 1400:
+        summary = summary[:1400] + "\\n... (additional changes omitted)"
+
+    message = (
+        "**🚨 CDL COMPETITIVE SETTINGS UPDATED**\\n"
+        "**Source:** Official CDL Competitive Settings\\n"
+        "**Status:** REVIEW REQUIRED\\n\\n"
+        "```diff\\n"
+        + summary +
+        "\\n```\\n"
+        "https://callofdutyleague.com/en-us/competitive-settings"
+    )
+
+    await dest.send(
+        message,
+        allowed_mentions=discord.AllowedMentions.none()
+    )
+
+
+@competitive_watch_loop.before_loop
+async def before_competitive_watch():
+    await bot.wait_until_ready()
+
 
 @official_watch_loop.before_loop
 async def before_official_watch(): await bot.wait_until_ready()
