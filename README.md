@@ -52,3 +52,5 @@ pip install -r requirements.txt
 
 ## Future upgrades
 A webhook endpoint or admin UI, X account allowlists, scheduled patch-aware reviews, interactive approval buttons, clip transcription and AI-assisted summaries. These are *not* included in this initial implementation.
+
+<!-- cdl-test-20261105-220430 -->
